@@ -1,0 +1,17 @@
+[package]
+name = "rust_prompt_armor"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.93"
+license = "MIT"
+description = "Cheap, deterministic prompt-injection defenses for LLM-facing Rust code: structured prompts, fence + unicode + pattern sanitization, output validation hooks"
+repository = "https://github.com/zygmunt-pawel/rust_prompt_armor"
+readme = "README.md"
+keywords = ["llm", "prompt", "injection", "security", "sanitization"]
+categories = ["text-processing"]
+
+[dependencies]
+thiserror = "=2.0.18"
+tracing = { version = "=0.1.44", features = ["attributes"] }
+
+[dev-dependencies]
