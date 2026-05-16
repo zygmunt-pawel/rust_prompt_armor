@@ -2,7 +2,7 @@
 
 Pure-Rust, deterministic, μs-cost defenses against prompt injection for LLM-facing applications.
 
-> Status: v0.1.0 — first usable release.
+> Status: v0.1.2 — first usable release, framing hardened against weak models (`gpt-4o-mini` and similar).
 
 ## What it does
 
@@ -185,7 +185,14 @@ export OPENROUTER_MODEL=openai/gpt-4o-mini      # optional, default openai/gpt-4
 cargo test --features llm-tests --test llm_attack_suite -- --test-threads=1
 ```
 
-Suite covers 9 attack families: direct injection, fence escape, unicode obfuscation, base64 payload, fuzzy typos, cascaded multi-vector, plus PL/ZH/RU language injection. See `tests/common/mod.rs` for the OpenRouter client impl — swap in your own `LlmClient` impl for any other provider.
+Suite covers **12 tests**:
+
+- **9 Strict-policy tests** (detection coverage): direct injection, fence escape, unicode obfuscation, base64 payload, fuzzy typos, cascaded multi-vector, plus PL/ZH/RU language injection. Assert that armor rejects the attack pre-LLM via `Err(Unsalvageable)`.
+- **3 framing-only tests** (resistance without Strict, default `WarnOnly` config): direct injection EN, direct injection PL, polite social engineering. Assert that the structured framing wrap alone defends, even when the caller hasn't opted into Strict.
+
+Current pass rate on `openai/gpt-4o-mini`: **12 / 12** (verified deterministically across 3 runs at `temperature=0`).
+
+See `tests/common/mod.rs` for the OpenRouter client impl — swap in your own `LlmClient` impl for any other provider.
 
 **Note on reasoning models:** GPT-5 family allocates `max_tokens` to reasoning before content. The default `max_tokens = 256` is fine for non-reasoning models like `gpt-4o-mini`; for `openai/gpt-5-mini`/`gpt-5-nano` raise the budget or expect empty content.
 
