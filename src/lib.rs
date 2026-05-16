@@ -2,6 +2,7 @@
 
 pub mod catalog;
 pub mod config;
+pub(crate) mod decider;
 pub mod error;
 pub mod finding;
 pub(crate) mod layers;
