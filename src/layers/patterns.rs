@@ -112,7 +112,7 @@ pub(crate) fn pattern_detect<'a>(input: &'a str, extra: &[&str]) -> (Cow<'a, str
     }
 
     // Sort matches by start position descending (apply right-to-left).
-    matches.sort_by(|a, b| b.0.cmp(&a.0));
+    matches.sort_by_key(|m| std::cmp::Reverse(m.0));
 
     let mut current = input.to_string();
     let mut findings = Vec::new();

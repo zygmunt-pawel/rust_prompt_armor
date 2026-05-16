@@ -32,10 +32,7 @@ pub(crate) fn fence_sanitize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
     let mut mutated = false;
 
     for &marker in MARKERS {
-        loop {
-            let Some(pos) = current.find(marker) else {
-                break;
-            };
+        while let Some(pos) = current.find(marker) {
             let (new_s, range) = safe_replace_range(&current, pos..pos + marker.len(), REPLACEMENT);
             findings.push(Finding {
                 kind: FindingKind::FenceMarker { marker },

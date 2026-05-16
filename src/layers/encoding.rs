@@ -110,7 +110,7 @@ pub(crate) fn encoding_detect<'a>(
     }
 
     // Apply right-to-left so byte offsets remain valid.
-    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    candidates.sort_by_key(|c| std::cmp::Reverse(c.0));
 
     let mut current = input.to_string();
     let mut findings = Vec::new();
