@@ -6,16 +6,32 @@
 //! ## What it does
 //!
 //! Given a system prompt and a user prompt, runs the user prompt through a
-//! layered pipeline:
+//! layered pipeline. By default the pipeline **detects but does not mutate**
+//! user content — every layer is set to [`Policy::WarnOnly`]. Callers that
+//! want the legacy "replace with `[REDACTED:...]`" behavior opt in per
+//! layer by setting the matching `*_policy` field to [`Policy::Sanitize`].
 //!
-//! 1. **Unicode normalize** — NFKC + strip zero-width + strip BiDi + resolve homoglyphs
-//! 2. **Fence sanitize** — strip ChatML / Llama / Anthropic / our-own fence markers
-//! 3. **Pattern detect** — multilingual catalog (EN+PL+UA+ZH+RU) exact match via aho-corasick
-//! 4. **Encoding detect** — base64/hex try-decode + recheck → escalate Critical on hit
-//! 5. **Decide** — signal-loss + Critical + Strict-policy gate → Ok or Err
+//! 1. **Unicode normalize** — detect (and optionally apply) NFKC + zero-width strip + BiDi strip + homoglyph resolve
+//! 2. **Fence sanitize** — detect (and optionally redact) ChatML / Llama / Anthropic / our-own fence markers
+//! 3. **Pattern detect** — multilingual catalog (EN+PL+UA+ZH+RU) exact + L≤2 fuzzy match via aho-corasick/Levenshtein
+//! 4. **Encoding detect** — long base64/hex try-decode + recheck; decoded-payload pattern hit is always **Critical** (forces `Err`)
+//! 5. **Decide** — signal-loss + Critical + Strict-policy gate → `Ok` or `Err`
 //!
-//! Then wraps both parts in tagged framing (`<system>...</system>` /
-//! `<user_data>...</user_data>` + a data-not-instructions notice).
+//! Whatever the layers do, the result is wrapped in tagged framing
+//! (`<system>...</system>` / `<user_data>...</user_data>` + a
+//! data-not-instructions notice). Framing is the only transformation
+//! always applied to user content.
+//!
+//! ### Why WarnOnly by default
+//!
+//! Keyword-based detection has unavoidable false positives. Scraped web
+//! content can legitimately contain phrases like "ignore previous" or
+//! `<system>` tags in a code snippet; redacting those silently destroys
+//! information the caller may need. The WarnOnly default lets the armor
+//! act as a *signal*: findings are surfaced, the caller decides whether
+//! to forward, reject, or log. Hard rejection still happens for
+//! unambiguous threats — an encoded blob that decodes to a known attack
+//! pattern, or any finding when the caller has opted into `Policy::Strict`.
 //!
 //! See the design spec at `docs/superpowers/specs/2026-05-16-prompt-armor-design.md`
 //! for threat model, defense rationale, and what is intentionally out of scope
@@ -38,17 +54,36 @@
 //!         assert!(prompt.system.contains("classify"));
 //!         assert!(prompt.user.contains("normal product"));
 //!         for w in armored.findings() {
-//!             // log findings if any
+//!             // log/inspect findings (WarnOnly default emits these without
+//!             // mutating the underlying content)
 //!             let _ = w;
 //!         }
 //!     }
 //!     Err(ArmorError::Unsalvageable { findings, signal_lost_pct }) => {
-//!         // input was so adversarial that sanitization wouldn't leave
-//!         // anything meaningful; decline to forward to the LLM
+//!         // Critical finding (decoded payload hit) or caller-set Strict
+//!         // policy fired. Do NOT forward to the LLM.
 //!         eprintln!("rejected: {} findings, {:.1}% signal lost", findings.len(), signal_lost_pct);
 //!     }
 //!     Err(other) => eprintln!("rejected: {other}"),
 //! }
+//! ```
+//!
+//! ## Opting into mutation
+//!
+//! ```rust
+//! use rust_prompt_armor::{Armor, ArmorConfig, Policy};
+//!
+//! let config = ArmorConfig {
+//!     pattern_policy: Policy::Sanitize, // replace matches with [REDACTED:pattern]
+//!     fence_policy:   Policy::Strict,   // any fence marker → Err(Unsalvageable)
+//!     ..ArmorConfig::default()
+//! };
+//! let armored = Armor::builder()
+//!     .system("Classify text.")
+//!     .user("some scraped text")
+//!     .config(config)
+//!     .build();
+//! # let _ = armored;
 //! ```
 //!
 //! ## Limits
