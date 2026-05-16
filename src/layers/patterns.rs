@@ -1,10 +1,10 @@
 //! Dangerous-pattern detection: aho-corasick exact match (first pass) +
 //! Levenshtein fuzzy match on near-miss candidates (second pass).
 
-use std::borrow::Cow;
-use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use crate::finding::{Finding, FindingKind, Severity};
 use crate::util::safe_replace_range;
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
+use std::borrow::Cow;
 
 const REPLACEMENT: &str = "[REDACTED:pattern]";
 
@@ -27,9 +27,8 @@ fn build_ac(patterns: &[&str]) -> AhoCorasick {
 /// sizes. A future optimization can `OnceLock`-cache the default-only AC
 /// and run a second AC just on extras.
 pub(crate) fn pattern_detect<'a>(input: &'a str, extra: &[&str]) -> (Cow<'a, str>, Vec<Finding>) {
-    let mut combined: Vec<&str> = Vec::with_capacity(
-        crate::catalog::all_default().len() + extra.len()
-    );
+    let mut combined: Vec<&str> =
+        Vec::with_capacity(crate::catalog::all_default().len() + extra.len());
     combined.extend_from_slice(crate::catalog::all_default());
     combined.extend_from_slice(extra);
 
@@ -62,7 +61,9 @@ pub(crate) fn pattern_detect<'a>(input: &'a str, extra: &[&str]) -> (Cow<'a, str
     let mut fuzzy_hits: Vec<(usize, usize, &str, u8)> = Vec::new(); // start, end, pattern, distance
     for &pat in &combined {
         let pat_tokens: Vec<&str> = pat.split_whitespace().collect();
-        if pat_tokens.is_empty() || pat_tokens.len() > lowered_tokens.len() { continue; }
+        if pat_tokens.is_empty() || pat_tokens.len() > lowered_tokens.len() {
+            continue;
+        }
         // Skip fuzzy for patterns that are too short relative to MAX_TOTAL_DISTANCE
         // (otherwise a 2-char pattern trivially L2-matches almost any 2-char input
         // token, e.g. CJK `扮演` vs English "is"). We require the pattern's total
@@ -71,23 +72,36 @@ pub(crate) fn pattern_detect<'a>(input: &'a str, extra: &[&str]) -> (Cow<'a, str
         // This also naturally excludes single-CJK-char patterns from fuzzy matching
         // (per design: CJK relies on exact catalog match).
         let pat_char_len: usize = pat_tokens.iter().map(|t| t.chars().count()).sum();
-        if pat_char_len <= 2 * MAX_TOTAL_DISTANCE { continue; }
+        if pat_char_len <= 2 * MAX_TOTAL_DISTANCE {
+            continue;
+        }
         // Also skip patterns containing non-ASCII characters — fuzzy Levenshtein
         // across scripts (Latin typo vs CJK) generates spurious hits because char
         // distance ignores script identity. Cyrillic/Latin patterns we ship are
         // long enough that the length gate above covers them; this gate is a
         // belt-and-braces guard for any future single-script-CJK additions.
-        if pat.chars().any(|c| !c.is_ascii()) { continue; }
+        if !pat.is_ascii() {
+            continue;
+        }
         for window in lowered_tokens.windows(pat_tokens.len()) {
-            let total: usize = window.iter().zip(pat_tokens.iter())
+            let total: usize = window
+                .iter()
+                .zip(pat_tokens.iter())
                 .map(|((_, a), b)| strsim::levenshtein(a, b))
                 .sum();
-            if total == 0 || total > MAX_TOTAL_DISTANCE { continue; }
+            if total == 0 || total > MAX_TOTAL_DISTANCE {
+                continue;
+            }
             let start = window.first().unwrap().0;
             let last = window.last().unwrap();
             let end = last.0 + last.1.len();
             // Skip if it overlaps an exact match we already have.
-            if matches.iter().any(|(s, e, _, _)| !(end <= *s || start >= *e)) { continue; }
+            if matches
+                .iter()
+                .any(|(s, e, _, _)| !(end <= *s || start >= *e))
+            {
+                continue;
+            }
             fuzzy_hits.push((start, end, pat, total as u8));
         }
     }
@@ -113,7 +127,8 @@ pub(crate) fn pattern_detect<'a>(input: &'a str, extra: &[&str]) -> (Cow<'a, str
         // boundaries — worst case we redact slightly more than intended.
         let end_in_current = end.min(current.len());
         let start_in_current = start.min(end_in_current);
-        let (new_s, range) = safe_replace_range(&current, start_in_current..end_in_current, REPLACEMENT);
+        let (new_s, range) =
+            safe_replace_range(&current, start_in_current..end_in_current, REPLACEMENT);
         findings.push(Finding {
             kind: FindingKind::DangerousPattern {
                 matched: pat.to_string(),
@@ -140,10 +155,16 @@ fn tokenize_whitespace(s: &str) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        while i < bytes.len() && bytes[i].is_ascii_whitespace() { i += 1; }
-        if i >= bytes.len() { break; }
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
         let start = i;
-        while i < bytes.len() && !bytes[i].is_ascii_whitespace() { i += 1; }
+        while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
         out.push((start, &s[start..i]));
     }
     out
@@ -271,8 +292,13 @@ mod tests {
     fn exact_and_fuzzy_do_not_double_count() {
         // "ignore previous" once → 1 finding (exact wins, fuzzy skipped due to overlap)
         let (_, findings) = pattern_detect("ignore previous", &[]);
-        let ignore_prev_hits: usize = findings.iter().filter(|f| matches!(&f.kind,
-            FindingKind::DangerousPattern { matched, .. } if matched == "ignore previous")).count();
+        let ignore_prev_hits: usize = findings
+            .iter()
+            .filter(|f| {
+                matches!(&f.kind,
+            FindingKind::DangerousPattern { matched, .. } if matched == "ignore previous")
+            })
+            .count();
         assert_eq!(ignore_prev_hits, 1);
     }
 }

@@ -22,14 +22,22 @@ pub(crate) fn safe_replace_range(
 }
 
 fn snap_left(s: &str, mut idx: usize) -> usize {
-    if idx >= s.len() { return s.len(); }
-    while idx > 0 && !s.is_char_boundary(idx) { idx -= 1; }
+    if idx >= s.len() {
+        return s.len();
+    }
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
     idx
 }
 
 fn snap_right(s: &str, mut idx: usize) -> usize {
-    if idx >= s.len() { return s.len(); }
-    while idx < s.len() && !s.is_char_boundary(idx) { idx += 1; }
+    if idx >= s.len() {
+        return s.len();
+    }
+    while idx < s.len() && !s.is_char_boundary(idx) {
+        idx += 1;
+    }
     idx
 }
 
@@ -96,8 +104,10 @@ mod tests {
             for start in 0..=s.len() {
                 for end in start..=s.len() {
                     let (out, _) = safe_replace_range(s, start..end, "[X]");
-                    assert!(std::str::from_utf8(out.as_bytes()).is_ok(),
-                        "invalid UTF-8 produced from '{s}' range {start}..{end}");
+                    assert!(
+                        std::str::from_utf8(out.as_bytes()).is_ok(),
+                        "invalid UTF-8 produced from '{s}' range {start}..{end}"
+                    );
                 }
             }
         }

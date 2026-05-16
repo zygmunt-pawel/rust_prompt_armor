@@ -26,7 +26,9 @@ mod tests {
     fn unsalvageable_display_includes_count_and_pct() {
         let err = ArmorError::Unsalvageable {
             findings: vec![Finding {
-                kind: FindingKind::UnicodeAnomaly { kind: crate::finding::UnicodeAnomaly::ZeroWidth },
+                kind: FindingKind::UnicodeAnomaly {
+                    kind: crate::finding::UnicodeAnomaly::ZeroWidth,
+                },
                 severity: Severity::Low,
                 span: None,
                 sanitized: true,
@@ -46,7 +48,10 @@ mod tests {
 
     #[test]
     fn input_too_large_display() {
-        let err = ArmorError::InputTooLarge { actual: 2_000_000, limit: 1_048_576 };
+        let err = ArmorError::InputTooLarge {
+            actual: 2_000_000,
+            limit: 1_048_576,
+        };
         let s = format!("{}", err);
         assert!(s.contains("2000000"), "got: {s}");
         assert!(s.contains("1048576"), "got: {s}");

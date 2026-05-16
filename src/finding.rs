@@ -17,20 +17,43 @@ pub struct Finding {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FindingKind {
-    UnicodeAnomaly { kind: UnicodeAnomaly },
-    FenceMarker { marker: &'static str },
-    DangerousPattern { matched: String, distance: u8 },
-    EncodedPayload { encoding: Encoding, decoded_hit: Option<String> },
+    UnicodeAnomaly {
+        kind: UnicodeAnomaly,
+    },
+    FenceMarker {
+        marker: &'static str,
+    },
+    DangerousPattern {
+        matched: String,
+        distance: u8,
+    },
+    EncodedPayload {
+        encoding: Encoding,
+        decoded_hit: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnicodeAnomaly { ZeroWidth, BiDi, Homoglyph, NonNfkc }
+pub enum UnicodeAnomaly {
+    ZeroWidth,
+    BiDi,
+    Homoglyph,
+    NonNfkc,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Encoding { Base64, Hex }
+pub enum Encoding {
+    Base64,
+    Hex,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Severity { Low, Medium, High, Critical }
+pub enum Severity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
 
 #[cfg(test)]
 mod tests {
@@ -46,7 +69,9 @@ mod tests {
     #[test]
     fn finding_equality_by_value() {
         let a = Finding {
-            kind: FindingKind::FenceMarker { marker: "<|im_end|>" },
+            kind: FindingKind::FenceMarker {
+                marker: "<|im_end|>",
+            },
             severity: Severity::High,
             span: Some(5..15),
             sanitized: true,
@@ -58,8 +83,12 @@ mod tests {
 
     #[test]
     fn finding_kinds_distinct() {
-        let unicode = FindingKind::UnicodeAnomaly { kind: UnicodeAnomaly::ZeroWidth };
-        let fence = FindingKind::FenceMarker { marker: "<|im_end|>" };
+        let unicode = FindingKind::UnicodeAnomaly {
+            kind: UnicodeAnomaly::ZeroWidth,
+        };
+        let fence = FindingKind::FenceMarker {
+            marker: "<|im_end|>",
+        };
         assert_ne!(unicode, fence);
     }
 

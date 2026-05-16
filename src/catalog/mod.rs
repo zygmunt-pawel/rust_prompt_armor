@@ -10,17 +10,27 @@
 
 mod en;
 mod pl;
+mod ru;
 mod ua;
 mod zh;
-mod ru;
 
 use std::sync::OnceLock;
 
-pub fn default_en() -> &'static [&'static str] { en::PATTERNS }
-pub fn default_pl() -> &'static [&'static str] { pl::PATTERNS }
-pub fn default_ua() -> &'static [&'static str] { ua::PATTERNS }
-pub fn default_zh() -> &'static [&'static str] { zh::PATTERNS }
-pub fn default_ru() -> &'static [&'static str] { ru::PATTERNS }
+pub fn default_en() -> &'static [&'static str] {
+    en::PATTERNS
+}
+pub fn default_pl() -> &'static [&'static str] {
+    pl::PATTERNS
+}
+pub fn default_ua() -> &'static [&'static str] {
+    ua::PATTERNS
+}
+pub fn default_zh() -> &'static [&'static str] {
+    zh::PATTERNS
+}
+pub fn default_ru() -> &'static [&'static str] {
+    ru::PATTERNS
+}
 
 /// Concatenated default catalog (EN + PL + UA + ZH + RU).
 /// Built lazily on first call and cached for the process lifetime.
@@ -28,8 +38,11 @@ pub fn all_default() -> &'static [&'static str] {
     static ALL: OnceLock<Vec<&'static str>> = OnceLock::new();
     ALL.get_or_init(|| {
         let mut v = Vec::with_capacity(
-            en::PATTERNS.len() + pl::PATTERNS.len() + ua::PATTERNS.len()
-                + zh::PATTERNS.len() + ru::PATTERNS.len()
+            en::PATTERNS.len()
+                + pl::PATTERNS.len()
+                + ua::PATTERNS.len()
+                + zh::PATTERNS.len()
+                + ru::PATTERNS.len(),
         );
         v.extend_from_slice(en::PATTERNS);
         v.extend_from_slice(pl::PATTERNS);
@@ -37,7 +50,8 @@ pub fn all_default() -> &'static [&'static str] {
         v.extend_from_slice(zh::PATTERNS);
         v.extend_from_slice(ru::PATTERNS);
         v
-    }).as_slice()
+    })
+    .as_slice()
 }
 
 #[cfg(test)]
@@ -55,8 +69,11 @@ mod tests {
 
     #[test]
     fn all_default_concatenates() {
-        let expected = default_en().len() + default_pl().len() + default_ua().len()
-            + default_zh().len() + default_ru().len();
+        let expected = default_en().len()
+            + default_pl().len()
+            + default_ua().len()
+            + default_zh().len()
+            + default_ru().len();
         assert_eq!(all_default().len(), expected);
     }
 
@@ -70,8 +87,11 @@ mod tests {
     #[test]
     fn no_duplicate_within_language() {
         for (name, list) in [
-            ("en", default_en()), ("pl", default_pl()), ("ua", default_ua()),
-            ("zh", default_zh()), ("ru", default_ru()),
+            ("en", default_en()),
+            ("pl", default_pl()),
+            ("ua", default_ua()),
+            ("zh", default_zh()),
+            ("ru", default_ru()),
         ] {
             let mut sorted: Vec<&&str> = list.iter().collect();
             sorted.sort();

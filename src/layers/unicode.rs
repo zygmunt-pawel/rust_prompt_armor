@@ -1,8 +1,8 @@
 //! Unicode normalization: NFKC + zero-width strip + BiDi strip + homoglyph resolve.
 
+use crate::finding::{Finding, FindingKind, Severity, UnicodeAnomaly};
 use std::borrow::Cow;
 use unicode_normalization::UnicodeNormalization;
-use crate::finding::{Finding, FindingKind, Severity, UnicodeAnomaly};
 
 const ZERO_WIDTH: &[char] = &[
     '\u{200B}', // ZERO WIDTH SPACE
@@ -13,8 +13,8 @@ const ZERO_WIDTH: &[char] = &[
 ];
 
 const BIDI: &[char] = &[
-    '\u{202A}', '\u{202B}', '\u{202C}', '\u{202D}', '\u{202E}',
-    '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+    '\u{202A}', '\u{202B}', '\u{202C}', '\u{202D}', '\u{202E}', '\u{2066}', '\u{2067}', '\u{2068}',
+    '\u{2069}',
 ];
 
 /// Minimal homoglyph map: Cyrillic / Greek letters that visually mimic Latin.
@@ -22,15 +22,43 @@ const BIDI: &[char] = &[
 fn homoglyph(c: char) -> Option<char> {
     Some(match c {
         // Cyrillic → Latin
-        'А' => 'A', 'В' => 'B', 'Е' => 'E', 'К' => 'K', 'М' => 'M',
-        'Н' => 'H', 'О' => 'O', 'Р' => 'P', 'С' => 'C', 'Т' => 'T',
-        'Х' => 'X', 'І' => 'I', 'Ј' => 'J',
-        'а' => 'a', 'е' => 'e', 'о' => 'o', 'р' => 'p', 'с' => 'c',
-        'х' => 'x', 'у' => 'y', 'і' => 'i', 'ј' => 'j',
+        'А' => 'A',
+        'В' => 'B',
+        'Е' => 'E',
+        'К' => 'K',
+        'М' => 'M',
+        'Н' => 'H',
+        'О' => 'O',
+        'Р' => 'P',
+        'С' => 'C',
+        'Т' => 'T',
+        'Х' => 'X',
+        'І' => 'I',
+        'Ј' => 'J',
+        'а' => 'a',
+        'е' => 'e',
+        'о' => 'o',
+        'р' => 'p',
+        'с' => 'c',
+        'х' => 'x',
+        'у' => 'y',
+        'і' => 'i',
+        'ј' => 'j',
         // Greek → Latin
-        'Α' => 'A', 'Β' => 'B', 'Ε' => 'E', 'Ζ' => 'Z', 'Η' => 'H',
-        'Ι' => 'I', 'Κ' => 'K', 'Μ' => 'M', 'Ν' => 'N', 'Ο' => 'O',
-        'Ρ' => 'P', 'Τ' => 'T', 'Υ' => 'Y', 'Χ' => 'X',
+        'Α' => 'A',
+        'Β' => 'B',
+        'Ε' => 'E',
+        'Ζ' => 'Z',
+        'Η' => 'H',
+        'Ι' => 'I',
+        'Κ' => 'K',
+        'Μ' => 'M',
+        'Ν' => 'N',
+        'Ο' => 'O',
+        'Ρ' => 'P',
+        'Τ' => 'T',
+        'Υ' => 'Y',
+        'Χ' => 'X',
         'ο' => 'o',
         _ => return None,
     })
@@ -44,8 +72,14 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
     let mut any_homoglyph = false;
 
     for c in input.chars() {
-        if ZERO_WIDTH.contains(&c) { any_zero_width = true; continue; }
-        if BIDI.contains(&c)       { any_bidi = true;       continue; }
+        if ZERO_WIDTH.contains(&c) {
+            any_zero_width = true;
+            continue;
+        }
+        if BIDI.contains(&c) {
+            any_bidi = true;
+            continue;
+        }
         if let Some(latin) = homoglyph(c) {
             any_homoglyph = true;
             out.push(latin);
@@ -59,7 +93,9 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
 
     if any_zero_width {
         findings.push(Finding {
-            kind: FindingKind::UnicodeAnomaly { kind: UnicodeAnomaly::ZeroWidth },
+            kind: FindingKind::UnicodeAnomaly {
+                kind: UnicodeAnomaly::ZeroWidth,
+            },
             severity: Severity::Low,
             span: None,
             sanitized: true,
@@ -68,7 +104,9 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
     }
     if any_bidi {
         findings.push(Finding {
-            kind: FindingKind::UnicodeAnomaly { kind: UnicodeAnomaly::BiDi },
+            kind: FindingKind::UnicodeAnomaly {
+                kind: UnicodeAnomaly::BiDi,
+            },
             severity: Severity::Medium,
             span: None,
             sanitized: true,
@@ -77,7 +115,9 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
     }
     if any_homoglyph {
         findings.push(Finding {
-            kind: FindingKind::UnicodeAnomaly { kind: UnicodeAnomaly::Homoglyph },
+            kind: FindingKind::UnicodeAnomaly {
+                kind: UnicodeAnomaly::Homoglyph,
+            },
             severity: Severity::Medium,
             span: None,
             sanitized: true,
@@ -86,7 +126,9 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
     }
     if any_nfkc_change {
         findings.push(Finding {
-            kind: FindingKind::UnicodeAnomaly { kind: UnicodeAnomaly::NonNfkc },
+            kind: FindingKind::UnicodeAnomaly {
+                kind: UnicodeAnomaly::NonNfkc,
+            },
             severity: Severity::Low,
             span: None,
             sanitized: true,
@@ -139,8 +181,12 @@ mod tests {
         let (out, findings) = unicode_normalize("Ig\u{200B}nore previous");
         assert_eq!(out, "Ignore previous");
         assert_eq!(findings.len(), 1);
-        assert!(matches!(findings[0].kind,
-            FindingKind::UnicodeAnomaly { kind: UnicodeAnomaly::ZeroWidth }));
+        assert!(matches!(
+            findings[0].kind,
+            FindingKind::UnicodeAnomaly {
+                kind: UnicodeAnomaly::ZeroWidth
+            }
+        ));
     }
 
     #[test]
@@ -154,16 +200,24 @@ mod tests {
     fn bidi_override_stripped() {
         let (out, findings) = unicode_normalize("safe\u{202E}txet desrever");
         assert_eq!(out, "safetxet desrever");
-        assert!(findings.iter().any(|f| matches!(f.kind,
-            FindingKind::UnicodeAnomaly { kind: UnicodeAnomaly::BiDi })));
+        assert!(findings.iter().any(|f| matches!(
+            f.kind,
+            FindingKind::UnicodeAnomaly {
+                kind: UnicodeAnomaly::BiDi
+            }
+        )));
     }
 
     #[test]
     fn cyrillic_homoglyph_resolved() {
         let (out, findings) = unicode_normalize("Іgnore previous");
         assert_eq!(out, "Ignore previous");
-        assert!(findings.iter().any(|f| matches!(f.kind,
-            FindingKind::UnicodeAnomaly { kind: UnicodeAnomaly::Homoglyph })));
+        assert!(findings.iter().any(|f| matches!(
+            f.kind,
+            FindingKind::UnicodeAnomaly {
+                kind: UnicodeAnomaly::Homoglyph
+            }
+        )));
     }
 
     #[test]

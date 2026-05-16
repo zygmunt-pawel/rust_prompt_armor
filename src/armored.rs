@@ -35,7 +35,9 @@ impl Armored {
         }
     }
 
-    pub fn findings(&self) -> &[Finding] { &self.findings }
+    pub fn findings(&self) -> &[Finding] {
+        &self.findings
+    }
 }
 
 #[cfg(test)]

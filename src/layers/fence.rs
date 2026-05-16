@@ -1,18 +1,27 @@
 //! Fence/role-marker sanitization + structured framing wrap.
 
-use std::borrow::Cow;
 use crate::finding::{Finding, FindingKind, Severity};
 use crate::util::safe_replace_range;
+use std::borrow::Cow;
 
 /// Known fence and role markers that an attacker might insert to break
 /// out of our framing or imitate a system/role boundary.
 const MARKERS: &[&str] = &[
-    "</user_data>", "<user_data>",
-    "</system>", "<system>",
-    "<|im_end|>", "<|im_start|>",
-    "<|system|>", "<|user|>", "<|assistant|>",
-    "[INST]", "[/INST]", "[SYS]", "[/SYS]",
-    "\n\nHuman:", "\n\nAssistant:",
+    "</user_data>",
+    "<user_data>",
+    "</system>",
+    "<system>",
+    "<|im_end|>",
+    "<|im_start|>",
+    "<|system|>",
+    "<|user|>",
+    "<|assistant|>",
+    "[INST]",
+    "[/INST]",
+    "[SYS]",
+    "[/SYS]",
+    "\n\nHuman:",
+    "\n\nAssistant:",
 ];
 
 const REPLACEMENT: &str = "[REDACTED:fence]";
@@ -24,7 +33,9 @@ pub(crate) fn fence_sanitize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
 
     for &marker in MARKERS {
         loop {
-            let Some(pos) = current.find(marker) else { break };
+            let Some(pos) = current.find(marker) else {
+                break;
+            };
             let (new_s, range) = safe_replace_range(&current, pos..pos + marker.len(), REPLACEMENT);
             findings.push(Finding {
                 kind: FindingKind::FenceMarker { marker },

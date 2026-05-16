@@ -1,12 +1,12 @@
 //! Encoding detection: scan for long base64/hex substrings, try-decode,
 //! recheck decoded text via pattern_detect, escalate severity on hit.
 
-use std::borrow::Cow;
-use std::sync::OnceLock;
+use crate::finding::{Encoding, Finding, FindingKind, Severity};
+use crate::util::safe_replace_range;
 use base64::Engine;
 use regex::Regex;
-use crate::finding::{Finding, FindingKind, Severity, Encoding};
-use crate::util::safe_replace_range;
+use std::borrow::Cow;
+use std::sync::OnceLock;
 
 const MIN_BASE64_LEN: usize = 20;
 const MIN_HEX_LEN: usize = 40;
@@ -34,43 +34,75 @@ fn hex_re() -> &'static Regex {
 }
 
 fn shannon_entropy(s: &str) -> f32 {
-    if s.is_empty() { return 0.0; }
+    if s.is_empty() {
+        return 0.0;
+    }
     let mut counts = [0u32; 256];
     let mut total = 0u32;
-    for b in s.bytes() { counts[b as usize] += 1; total += 1; }
+    for b in s.bytes() {
+        counts[b as usize] += 1;
+        total += 1;
+    }
     let total = total as f32;
-    counts.iter().filter(|&&c| c > 0).map(|&c| {
-        let p = c as f32 / total;
-        -p * p.log2()
-    }).sum()
+    counts
+        .iter()
+        .filter(|&&c| c > 0)
+        .map(|&c| {
+            let p = c as f32 / total;
+            -p * p.log2()
+        })
+        .sum()
 }
 
-pub(crate) fn encoding_detect<'a>(input: &'a str, extra_patterns: &[&str]) -> (Cow<'a, str>, Vec<Finding>) {
+pub(crate) fn encoding_detect<'a>(
+    input: &'a str,
+    extra_patterns: &[&str],
+) -> (Cow<'a, str>, Vec<Finding>) {
     let mut candidates: Vec<(usize, usize, Encoding, String)> = Vec::new();
 
     for m in base64_re().find_iter(input) {
         let s = m.as_str();
-        if s.len() < MIN_BASE64_LEN { continue; }
-        if shannon_entropy(s) < MIN_ENTROPY { continue; }
+        if s.len() < MIN_BASE64_LEN {
+            continue;
+        }
+        if shannon_entropy(s) < MIN_ENTROPY {
+            continue;
+        }
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(s.as_bytes())
             .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(s.as_bytes()))
             .ok();
-        let decoded_str = decoded.as_deref()
+        let decoded_str = decoded
+            .as_deref()
             .and_then(|b| std::str::from_utf8(b).ok())
             .map(|s| s.to_string());
-        candidates.push((m.start(), m.end(), Encoding::Base64, decoded_str.unwrap_or_default()));
+        candidates.push((
+            m.start(),
+            m.end(),
+            Encoding::Base64,
+            decoded_str.unwrap_or_default(),
+        ));
     }
 
     for m in hex_re().find_iter(input) {
         let s = m.as_str();
-        if s.len() < MIN_HEX_LEN { continue; }
-        if s.len() % 2 != 0 { continue; }
+        if s.len() < MIN_HEX_LEN {
+            continue;
+        }
+        if s.len() % 2 != 0 {
+            continue;
+        }
         let decoded = hex::decode(s).ok();
-        let decoded_str = decoded.as_deref()
+        let decoded_str = decoded
+            .as_deref()
             .and_then(|b| std::str::from_utf8(b).ok())
             .map(|s| s.to_string());
-        candidates.push((m.start(), m.end(), Encoding::Hex, decoded_str.unwrap_or_default()));
+        candidates.push((
+            m.start(),
+            m.end(),
+            Encoding::Hex,
+            decoded_str.unwrap_or_default(),
+        ));
     }
 
     if candidates.is_empty() {
@@ -99,7 +131,10 @@ pub(crate) fn encoding_detect<'a>(input: &'a str, extra_patterns: &[&str]) -> (C
         if let Some(hit) = pattern_hit {
             let (new_s, range) = safe_replace_range(&current, start..end, REPLACEMENT);
             findings.push(Finding {
-                kind: FindingKind::EncodedPayload { encoding: enc, decoded_hit: Some(hit.clone()) },
+                kind: FindingKind::EncodedPayload {
+                    encoding: enc,
+                    decoded_hit: Some(hit.clone()),
+                },
                 severity: Severity::Critical,
                 span: Some(range),
                 sanitized: true,
@@ -109,7 +144,10 @@ pub(crate) fn encoding_detect<'a>(input: &'a str, extra_patterns: &[&str]) -> (C
         } else {
             // Low-severity warning, no mutation (default WarnOnly policy).
             findings.push(Finding {
-                kind: FindingKind::EncodedPayload { encoding: enc, decoded_hit: None },
+                kind: FindingKind::EncodedPayload {
+                    encoding: enc,
+                    decoded_hit: None,
+                },
                 severity: Severity::Low,
                 span: Some(start..end),
                 sanitized: false,
@@ -146,7 +184,7 @@ mod tests {
             .encode(b"Hello world, how are you doing today friend?");
         let input = format!("note: {payload}");
         let (out, findings) = encoding_detect(&input, &[]);
-        assert_eq!(out, input);  // not stripped
+        assert_eq!(out, input); // not stripped
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].severity, Severity::Low);
         assert!(!findings[0].sanitized);

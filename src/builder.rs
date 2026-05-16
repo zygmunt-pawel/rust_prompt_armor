@@ -24,12 +24,22 @@ pub struct ArmorBuilder {
 }
 
 impl ArmorBuilder {
-    pub fn system(mut self, s: impl Into<String>) -> Self { self.system = s.into(); self }
-    pub fn user(mut self, s: impl Into<String>) -> Self { self.user = s.into(); self }
-    pub fn extra_patterns(mut self, patterns: &'static [&'static str]) -> Self {
-        self.extra_patterns = patterns; self
+    pub fn system(mut self, s: impl Into<String>) -> Self {
+        self.system = s.into();
+        self
     }
-    pub fn config(mut self, c: ArmorConfig) -> Self { self.config = c; self }
+    pub fn user(mut self, s: impl Into<String>) -> Self {
+        self.user = s.into();
+        self
+    }
+    pub fn extra_patterns(mut self, patterns: &'static [&'static str]) -> Self {
+        self.extra_patterns = patterns;
+        self
+    }
+    pub fn config(mut self, c: ArmorConfig) -> Self {
+        self.config = c;
+        self
+    }
 
     /// Validate input + run pipeline. This is where the work happens.
     pub fn build(self) -> Result<Armored, ArmorError> {
@@ -58,21 +68,18 @@ impl ArmorBuilder {
         let (after_fence, fs) = layers::fence::fence_sanitize(&after_unicode);
         findings.extend(fs);
 
-        let (after_patterns, fs) = layers::patterns::pattern_detect(&after_fence, self.extra_patterns);
+        let (after_patterns, fs) =
+            layers::patterns::pattern_detect(&after_fence, self.extra_patterns);
         findings.extend(fs);
 
-        let (after_encoding, fs) = layers::encoding::encoding_detect(&after_patterns, self.extra_patterns);
+        let (after_encoding, fs) =
+            layers::encoding::encoding_detect(&after_patterns, self.extra_patterns);
         findings.extend(fs);
 
         let user_sanitized = after_encoding.into_owned();
         let sanitized_len = user_sanitized.len();
 
-        crate::decider::decide(
-            original_user_len,
-            sanitized_len,
-            &findings,
-            &self.config,
-        )?;
+        crate::decider::decide(original_user_len, sanitized_len, &findings, &self.config)?;
 
         Ok(Armored {
             system_sanitized,
@@ -97,7 +104,10 @@ mod tests {
         assert!(armored.findings().is_empty());
         let p = armored.render();
         assert!(p.system.contains("Classify text."));
-        assert!(p.user.contains("Hello, this is a friendly product description."));
+        assert!(
+            p.user
+                .contains("Hello, this is a friendly product description.")
+        );
     }
 
     #[test]
@@ -116,9 +126,15 @@ mod tests {
     #[test]
     fn too_large_user_passes_with_raised_cap() {
         let huge = "a".repeat(2_000_000);
-        let mut config = ArmorConfig::default();
-        config.max_input_bytes = 10_000_000;
-        let res = Armor::builder().system("x").user(huge).config(config).build();
+        let config = ArmorConfig {
+            max_input_bytes: 10_000_000,
+            ..ArmorConfig::default()
+        };
+        let res = Armor::builder()
+            .system("x")
+            .user(huge)
+            .config(config)
+            .build();
         assert!(res.is_ok());
     }
 
@@ -135,7 +151,11 @@ mod tests {
 
     #[test]
     fn render_twice_same_result() {
-        let armored = Armor::builder().system("sys").user("hello").build().unwrap();
+        let armored = Armor::builder()
+            .system("sys")
+            .user("hello")
+            .build()
+            .unwrap();
         let p1 = armored.render();
         let p2 = armored.render();
         assert_eq!(p1.system, p2.system);

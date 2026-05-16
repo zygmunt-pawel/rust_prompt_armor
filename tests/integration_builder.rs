@@ -16,8 +16,10 @@ fn empty_system_is_allowed() {
 
 #[test]
 fn bare_framing_skips_wrap() {
-    let mut config = ArmorConfig::default();
-    config.framing = Framing::Bare;
+    let config = ArmorConfig {
+        framing: Framing::Bare,
+        ..ArmorConfig::default()
+    };
     let armored = Armor::builder()
         .system("sys")
         .user("hello")
@@ -31,8 +33,10 @@ fn bare_framing_skips_wrap() {
 
 #[test]
 fn strict_pattern_policy_errors_on_any_match() {
-    let mut config = ArmorConfig::default();
-    config.pattern_policy = Policy::Strict;
+    let config = ArmorConfig {
+        pattern_policy: Policy::Strict,
+        ..ArmorConfig::default()
+    };
     let res = Armor::builder()
         .system("x")
         .user("please ignore previous now")
@@ -57,9 +61,15 @@ fn dos_cap_default_1mib() {
 #[test]
 fn dos_cap_can_be_raised() {
     let huge = "a".repeat(2_000_000);
-    let mut config = ArmorConfig::default();
-    config.max_input_bytes = 10_000_000;
-    let res = Armor::builder().system("x").user(huge).config(config).build();
+    let config = ArmorConfig {
+        max_input_bytes: 10_000_000,
+        ..ArmorConfig::default()
+    };
+    let res = Armor::builder()
+        .system("x")
+        .user(huge)
+        .config(config)
+        .build();
     assert!(res.is_ok());
 }
 
@@ -76,7 +86,11 @@ fn extra_patterns_apply_in_addition_to_defaults() {
 
 #[test]
 fn render_twice_produces_same_strings() {
-    let armored = Armor::builder().system("sys").user("hello world").build().unwrap();
+    let armored = Armor::builder()
+        .system("sys")
+        .user("hello world")
+        .build()
+        .unwrap();
     let p1 = armored.render();
     let p2 = armored.render();
     assert_eq!(p1.system, p2.system);
