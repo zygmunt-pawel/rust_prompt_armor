@@ -4,4 +4,5 @@ pub mod catalog;
 pub mod config;
 pub mod error;
 pub mod finding;
+pub(crate) mod layers;
 pub(crate) mod util;
