@@ -1,5 +1,6 @@
 //! `rust_prompt_armor` — deterministic, cheap defenses against prompt injection.
 
+pub mod armored;
 pub mod catalog;
 pub mod config;
 pub(crate) mod decider;
