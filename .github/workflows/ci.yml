@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs on the same ref when a new push lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # `--all-features` exercises the `llm-tests` cfg path too.
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  doc:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # `--no-deps` keeps the build fast; `RUSTDOCFLAGS=-D warnings` (env)
+      # turns broken intra-doc links into CI failures.
+      - run: cargo doc --no-deps --document-private-items
+
+  msrv:
+    name: MSRV (1.93)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.93
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      # `cargo check --all-targets` exercises lib + tests for the pinned
+      # MSRV from `package.rust-version` in Cargo.toml. We don't run the
+      # full test suite on MSRV — that's covered by the `test` job.
+      # No `--locked`: Cargo.lock is gitignored (library convention),
+      # CI resolves fresh each run.
+      - run: cargo check --all-targets
+
+  test:
+    name: test (default features)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Default-feature test pass: unit + integration + proptest + doctests.
+      # The `llm-tests` feature is opt-in (requires API key + caller-supplied
+      # client impl), so it's covered separately by the compile-only job below.
+      # `--no-fail-fast` so one flake doesn't mask the rest.
+      - name: cargo test
+        run: cargo test --no-fail-fast
+
+  test-llm-feature:
+    name: llm-tests (compile-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Verify the optional `llm-tests` feature compiles. We never RUN this
+      # suite in CI because `tests/llm_attack_suite.rs::test_client()` is a
+      # stub that panics by design — callers supply their own LlmClient impl
+      # (see tests/common/mod.rs for the Anthropic example). Compile gate
+      # catches type/import drift in the trait or attack inputs.
+      - run: cargo test --features llm-tests --no-run
+
+  bench-compile:
+    name: bench compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Don't run criterion in CI — shared runners produce noisy numbers
+      # and benches take minutes. Compile-only catches drift in bench
+      # targets (criterion API, public API used by benches).
+      - run: cargo bench --no-run
