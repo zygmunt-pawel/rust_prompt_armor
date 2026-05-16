@@ -4,10 +4,15 @@
 pub struct ArmorConfig {
     /// Fraction of input that may be removed by sanitization before
     /// `ArmorError::Unsalvageable` triggers. 0.5 = 50%.
+    ///
+    /// Only meaningful when at least one layer is set to [`Policy::Sanitize`]
+    /// — in the default `WarnOnly` configuration the armor never mutates user
+    /// content, so `signal_lost` is always 0 and this gate never fires.
     pub max_signal_loss: f32,
     /// Hard cap on user input bytes; above this, `ArmorError::InputTooLarge`
     /// is returned without running the pipeline (DoS guard).
     pub max_input_bytes: usize,
+    pub unicode_policy: Policy,
     pub fence_policy: Policy,
     pub pattern_policy: Policy,
     pub encoding_policy: Policy,
@@ -19,8 +24,13 @@ impl Default for ArmorConfig {
         Self {
             max_signal_loss: 0.5,
             max_input_bytes: 1_048_576, // 1 MiB
-            fence_policy: Policy::Sanitize,
-            pattern_policy: Policy::Sanitize,
+            // All layers default to WarnOnly: detection runs, findings are
+            // produced, but user content is NOT mutated. Callers that prefer
+            // the legacy mutate-and-redact behavior must opt in explicitly by
+            // setting individual `*_policy` fields to `Policy::Sanitize`.
+            unicode_policy: Policy::WarnOnly,
+            fence_policy: Policy::WarnOnly,
+            pattern_policy: Policy::WarnOnly,
             encoding_policy: Policy::WarnOnly,
             framing: Framing::Tagged,
         }
@@ -55,8 +65,10 @@ mod tests {
         let c = ArmorConfig::default();
         assert_eq!(c.max_signal_loss, 0.5);
         assert_eq!(c.max_input_bytes, 1_048_576);
-        assert_eq!(c.fence_policy, Policy::Sanitize);
-        assert_eq!(c.pattern_policy, Policy::Sanitize);
+        // Default: every layer is warn-only. No mutation of user content.
+        assert_eq!(c.unicode_policy, Policy::WarnOnly);
+        assert_eq!(c.fence_policy, Policy::WarnOnly);
+        assert_eq!(c.pattern_policy, Policy::WarnOnly);
         assert_eq!(c.encoding_policy, Policy::WarnOnly);
         assert_eq!(c.framing, Framing::Tagged);
     }

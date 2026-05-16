@@ -57,23 +57,37 @@ impl ArmorBuilder {
         let mut findings: Vec<Finding> = Vec::new();
 
         // ---- System pipeline: only unicode normalize ----
-        let (sys_after_unicode, sys_findings) = layers::unicode::unicode_normalize(&self.system);
+        // System prompts come from the integrator (not user input), so we
+        // use Sanitize for the system unicode pass regardless of the
+        // user-facing `unicode_policy` — any zero-width / BiDi / homoglyph
+        // in the integrator's own system prompt is almost certainly a bug
+        // worth normalizing away rather than warning about.
+        let (sys_after_unicode, sys_findings) =
+            layers::unicode::unicode_normalize(&self.system, crate::config::Policy::Sanitize);
         findings.extend(sys_findings);
         let system_sanitized = sys_after_unicode.into_owned();
 
         // ---- User pipeline: full ----
-        let (after_unicode, fs) = layers::unicode::unicode_normalize(&self.user);
+        let (after_unicode, fs) =
+            layers::unicode::unicode_normalize(&self.user, self.config.unicode_policy);
         findings.extend(fs);
 
-        let (after_fence, fs) = layers::fence::fence_sanitize(&after_unicode);
+        let (after_fence, fs) =
+            layers::fence::fence_sanitize(&after_unicode, self.config.fence_policy);
         findings.extend(fs);
 
-        let (after_patterns, fs) =
-            layers::patterns::pattern_detect(&after_fence, self.extra_patterns);
+        let (after_patterns, fs) = layers::patterns::pattern_detect(
+            &after_fence,
+            self.extra_patterns,
+            self.config.pattern_policy,
+        );
         findings.extend(fs);
 
-        let (after_encoding, fs) =
-            layers::encoding::encoding_detect(&after_patterns, self.extra_patterns);
+        let (after_encoding, fs) = layers::encoding::encoding_detect(
+            &after_patterns,
+            self.extra_patterns,
+            self.config.encoding_policy,
+        );
         findings.extend(fs);
 
         let user_sanitized = after_encoding.into_owned();

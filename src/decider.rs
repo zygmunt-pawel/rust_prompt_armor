@@ -27,10 +27,10 @@ pub(crate) fn decide(
     let has_critical = findings.iter().any(|f| f.severity == Severity::Critical);
 
     let strict_triggered = findings.iter().any(|f| match f.kind {
+        FindingKind::UnicodeAnomaly { .. } => config.unicode_policy == Policy::Strict,
         FindingKind::FenceMarker { .. } => config.fence_policy == Policy::Strict,
         FindingKind::DangerousPattern { .. } => config.pattern_policy == Policy::Strict,
         FindingKind::EncodedPayload { .. } => config.encoding_policy == Policy::Strict,
-        FindingKind::UnicodeAnomaly { .. } => false,
     });
 
     if has_critical || strict_triggered || signal_lost > config.max_signal_loss {
@@ -106,6 +106,43 @@ mod tests {
             &ArmorConfig::default(),
         );
         assert!(matches!(res, Err(ArmorError::Unsalvageable { .. })));
+    }
+
+    #[test]
+    fn err_on_strict_unicode_policy_any_finding() {
+        let config = ArmorConfig {
+            unicode_policy: Policy::Strict,
+            ..ArmorConfig::default()
+        };
+        let res = decide(
+            100,
+            100,
+            &[fnd(
+                FindingKind::UnicodeAnomaly {
+                    kind: UnicodeAnomaly::ZeroWidth,
+                },
+                Severity::Low,
+            )],
+            &config,
+        );
+        assert!(matches!(res, Err(ArmorError::Unsalvageable { .. })));
+    }
+
+    #[test]
+    fn warn_only_unicode_policy_does_not_err() {
+        // Default is WarnOnly for unicode; finding alone should not fail.
+        let res = decide(
+            100,
+            100,
+            &[fnd(
+                FindingKind::UnicodeAnomaly {
+                    kind: UnicodeAnomaly::ZeroWidth,
+                },
+                Severity::Low,
+            )],
+            &ArmorConfig::default(),
+        );
+        assert!(res.is_ok());
     }
 
     #[test]

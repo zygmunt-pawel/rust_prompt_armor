@@ -1,5 +1,6 @@
 //! Unicode normalization: NFKC + zero-width strip + BiDi strip + homoglyph resolve.
 
+use crate::config::Policy;
 use crate::finding::{Finding, FindingKind, Severity, UnicodeAnomaly};
 use std::borrow::Cow;
 use unicode_normalization::UnicodeNormalization;
@@ -64,7 +65,7 @@ fn homoglyph(c: char) -> Option<char> {
     })
 }
 
-pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
+pub(crate) fn unicode_normalize(input: &str, policy: Policy) -> (Cow<'_, str>, Vec<Finding>) {
     let mut findings = Vec::new();
     let mut out = String::with_capacity(input.len());
     let mut any_zero_width = false;
@@ -91,6 +92,11 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
     let nfkc: String = out.nfkc().collect();
     let any_nfkc_change = nfkc != out;
 
+    // `mutate` controls whether the cleaned string replaces the original. In
+    // `WarnOnly` (default) we only report findings; the caller still sees the
+    // raw input. In `Sanitize` or `Strict` we apply the cleanup.
+    let mutate = matches!(policy, Policy::Sanitize | Policy::Strict);
+
     if any_zero_width {
         findings.push(Finding {
             kind: FindingKind::UnicodeAnomaly {
@@ -98,8 +104,12 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
             },
             severity: Severity::Low,
             span: None,
-            sanitized: true,
-            detail: "zero-width characters stripped".into(),
+            sanitized: mutate,
+            detail: if mutate {
+                "zero-width characters stripped".into()
+            } else {
+                "zero-width characters detected".into()
+            },
         });
     }
     if any_bidi {
@@ -109,8 +119,12 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
             },
             severity: Severity::Medium,
             span: None,
-            sanitized: true,
-            detail: "BiDi override characters stripped".into(),
+            sanitized: mutate,
+            detail: if mutate {
+                "BiDi override characters stripped".into()
+            } else {
+                "BiDi override characters detected".into()
+            },
         });
     }
     if any_homoglyph {
@@ -120,8 +134,12 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
             },
             severity: Severity::Medium,
             span: None,
-            sanitized: true,
-            detail: "Cyrillic/Greek homoglyphs resolved to Latin".into(),
+            sanitized: mutate,
+            detail: if mutate {
+                "Cyrillic/Greek homoglyphs resolved to Latin".into()
+            } else {
+                "Cyrillic/Greek homoglyphs detected".into()
+            },
         });
     }
     if any_nfkc_change {
@@ -131,12 +149,16 @@ pub(crate) fn unicode_normalize(input: &str) -> (Cow<'_, str>, Vec<Finding>) {
             },
             severity: Severity::Low,
             span: None,
-            sanitized: true,
-            detail: "NFKC normalization applied".into(),
+            sanitized: mutate,
+            detail: if mutate {
+                "NFKC normalization applied".into()
+            } else {
+                "non-NFKC sequence detected".into()
+            },
         });
     }
 
-    if findings.is_empty() {
+    if findings.is_empty() || !mutate {
         (Cow::Borrowed(input), findings)
     } else {
         (Cow::Owned(nfkc), findings)
@@ -149,7 +171,7 @@ mod tests {
 
     #[test]
     fn clean_ascii_unchanged() {
-        let (out, findings) = unicode_normalize("Hello world");
+        let (out, findings) = unicode_normalize("Hello world", Policy::Sanitize);
         assert_eq!(out, "Hello world");
         assert!(findings.is_empty());
         assert!(matches!(out, Cow::Borrowed(_)));
@@ -157,30 +179,31 @@ mod tests {
 
     #[test]
     fn legit_polish_unchanged() {
-        let (out, findings) = unicode_normalize("łatwa próba");
+        let (out, findings) = unicode_normalize("łatwa próba", Policy::Sanitize);
         assert_eq!(out, "łatwa próba");
         assert!(findings.is_empty());
     }
 
     #[test]
     fn legit_cjk_unchanged() {
-        let (out, findings) = unicode_normalize("中文测试");
+        let (out, findings) = unicode_normalize("中文测试", Policy::Sanitize);
         assert_eq!(out, "中文测试");
         assert!(findings.is_empty());
     }
 
     #[test]
     fn emoji_unchanged() {
-        let (out, findings) = unicode_normalize("rocket 🚀 ship");
+        let (out, findings) = unicode_normalize("rocket 🚀 ship", Policy::Sanitize);
         assert_eq!(out, "rocket 🚀 ship");
         assert!(findings.is_empty());
     }
 
     #[test]
-    fn zero_width_stripped() {
-        let (out, findings) = unicode_normalize("Ig\u{200B}nore previous");
+    fn zero_width_stripped_under_sanitize() {
+        let (out, findings) = unicode_normalize("Ig\u{200B}nore previous", Policy::Sanitize);
         assert_eq!(out, "Ignore previous");
         assert_eq!(findings.len(), 1);
+        assert!(findings[0].sanitized);
         assert!(matches!(
             findings[0].kind,
             FindingKind::UnicodeAnomaly {
@@ -190,15 +213,41 @@ mod tests {
     }
 
     #[test]
-    fn bom_stripped() {
-        let (out, findings) = unicode_normalize("\u{FEFF}hello");
-        assert_eq!(out, "hello");
+    fn zero_width_detected_but_not_stripped_under_warnonly() {
+        let input = "Ig\u{200B}nore previous";
+        let (out, findings) = unicode_normalize(input, Policy::WarnOnly);
+        assert_eq!(out, input); // not mutated
+        assert!(matches!(out, Cow::Borrowed(_)));
         assert_eq!(findings.len(), 1);
+        assert!(!findings[0].sanitized);
+        assert!(matches!(
+            findings[0].kind,
+            FindingKind::UnicodeAnomaly {
+                kind: UnicodeAnomaly::ZeroWidth
+            }
+        ));
     }
 
     #[test]
-    fn bidi_override_stripped() {
-        let (out, findings) = unicode_normalize("safe\u{202E}txet desrever");
+    fn bom_stripped_under_sanitize() {
+        let (out, findings) = unicode_normalize("\u{FEFF}hello", Policy::Sanitize);
+        assert_eq!(out, "hello");
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].sanitized);
+    }
+
+    #[test]
+    fn bom_detected_but_not_stripped_under_warnonly() {
+        let input = "\u{FEFF}hello";
+        let (out, findings) = unicode_normalize(input, Policy::WarnOnly);
+        assert_eq!(out, input);
+        assert_eq!(findings.len(), 1);
+        assert!(!findings[0].sanitized);
+    }
+
+    #[test]
+    fn bidi_override_stripped_under_sanitize() {
+        let (out, findings) = unicode_normalize("safe\u{202E}txet desrever", Policy::Sanitize);
         assert_eq!(out, "safetxet desrever");
         assert!(findings.iter().any(|f| matches!(
             f.kind,
@@ -209,8 +258,27 @@ mod tests {
     }
 
     #[test]
-    fn cyrillic_homoglyph_resolved() {
-        let (out, findings) = unicode_normalize("Іgnore previous");
+    fn bidi_override_detected_warnonly() {
+        let input = "safe\u{202E}txet desrever";
+        let (out, findings) = unicode_normalize(input, Policy::WarnOnly);
+        assert_eq!(out, input);
+        let f = findings
+            .iter()
+            .find(|f| {
+                matches!(
+                    f.kind,
+                    FindingKind::UnicodeAnomaly {
+                        kind: UnicodeAnomaly::BiDi
+                    }
+                )
+            })
+            .expect("BiDi finding expected");
+        assert!(!f.sanitized);
+    }
+
+    #[test]
+    fn cyrillic_homoglyph_resolved_under_sanitize() {
+        let (out, findings) = unicode_normalize("Іgnore previous", Policy::Sanitize);
         assert_eq!(out, "Ignore previous");
         assert!(findings.iter().any(|f| matches!(
             f.kind,
@@ -221,9 +289,46 @@ mod tests {
     }
 
     #[test]
-    fn multiple_anomalies_produce_multiple_findings() {
-        let (out, findings) = unicode_normalize("\u{FEFF}Іg\u{200B}nore");
+    fn cyrillic_homoglyph_detected_warnonly() {
+        let input = "Іgnore previous";
+        let (out, findings) = unicode_normalize(input, Policy::WarnOnly);
+        assert_eq!(out, input);
+        let f = findings
+            .iter()
+            .find(|f| {
+                matches!(
+                    f.kind,
+                    FindingKind::UnicodeAnomaly {
+                        kind: UnicodeAnomaly::Homoglyph
+                    }
+                )
+            })
+            .expect("Homoglyph finding expected");
+        assert!(!f.sanitized);
+    }
+
+    #[test]
+    fn multiple_anomalies_produce_multiple_findings_under_sanitize() {
+        let (out, findings) = unicode_normalize("\u{FEFF}Іg\u{200B}nore", Policy::Sanitize);
         assert_eq!(out, "Ignore");
         assert!(findings.len() >= 2);
+    }
+
+    #[test]
+    fn multiple_anomalies_warnonly_keeps_input_intact() {
+        let input = "\u{FEFF}Іg\u{200B}nore";
+        let (out, findings) = unicode_normalize(input, Policy::WarnOnly);
+        assert_eq!(out, input);
+        assert!(findings.len() >= 2);
+        assert!(findings.iter().all(|f| !f.sanitized));
+    }
+
+    #[test]
+    fn strict_policy_still_mutates() {
+        // Strict triggers Err in the decider, but the layer itself should
+        // produce a normalized string just like Sanitize would.
+        let (out, findings) = unicode_normalize("Ig\u{200B}nore", Policy::Strict);
+        assert_eq!(out, "Ignore");
+        assert!(findings[0].sanitized);
     }
 }
