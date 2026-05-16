@@ -32,3 +32,11 @@ criterion = "=0.8.2"
 [features]
 default = []
 llm-tests = ["dep:async-trait", "dep:anyhow"]
+
+[[bench]]
+name = "pipeline"
+harness = false
+
+[[bench]]
+name = "patterns"
+harness = false
