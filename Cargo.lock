@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "rust_prompt_armor"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "aho-corasick",
  "anyhow",
