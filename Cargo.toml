@@ -13,5 +13,21 @@ categories = ["text-processing"]
 [dependencies]
 thiserror = "=2.0.18"
 tracing = { version = "=0.1.44", features = ["attributes"] }
+unicode-normalization = "=0.1.25"
+aho-corasick = "=1.1.4"
+strsim = "=0.11.1"
+base64 = "=0.22.1"
+hex = "=0.4.3"
+regex = "=1.12.3"
+async-trait = { version = "=0.1.89", optional = true }
 
 [dev-dependencies]
+tokio = { version = "=1.52.3", features = ["macros", "rt-multi-thread"] }
+pretty_assertions = "=1.4.1"
+anyhow = "=1.0.102"
+proptest = "=1.11.0"
+criterion = "=0.8.2"
+
+[features]
+default = []
+llm-tests = ["dep:async-trait"]
