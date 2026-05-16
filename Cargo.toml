@@ -20,6 +20,7 @@ base64 = "=0.22.1"
 hex = "=0.4.3"
 regex = "=1.12.3"
 async-trait = { version = "=0.1.89", optional = true }
+anyhow = { version = "=1.0.102", optional = true }
 
 [dev-dependencies]
 tokio = { version = "=1.52.3", features = ["macros", "rt-multi-thread"] }
@@ -30,4 +31,4 @@ criterion = "=0.8.2"
 
 [features]
 default = []
-llm-tests = ["dep:async-trait"]
+llm-tests = ["dep:async-trait", "dep:anyhow"]
