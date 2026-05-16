@@ -4,7 +4,7 @@
 use crate::armored::Armored;
 use crate::config::ArmorConfig;
 use crate::error::ArmorError;
-use crate::finding::Finding;
+use crate::finding::{Finding, Severity};
 use crate::layers;
 
 pub struct Armor;
@@ -42,11 +42,31 @@ impl ArmorBuilder {
     }
 
     /// Validate input + run pipeline. This is where the work happens.
+    ///
+    /// Emits a single `armor.build` tracing span around the call with
+    /// `armor.user_bytes` / `armor.system_bytes` fields. Boundary events:
+    /// `WARN` on `InputTooLarge` and `Unsalvageable` rejections, `DEBUG`
+    /// on successful build with a findings summary. Per-finding logging
+    /// is intentionally left to the caller (iterate `armored.findings()`).
+    #[tracing::instrument(
+        name = "armor.build",
+        skip_all,
+        fields(
+            armor.user_bytes = self.user.len(),
+            armor.system_bytes = self.system.len(),
+        ),
+    )]
     pub fn build(self) -> Result<Armored, ArmorError> {
         if self.user.is_empty() {
+            tracing::debug!("armor rejected empty user input");
             return Err(ArmorError::EmptyInput);
         }
         if self.user.len() > self.config.max_input_bytes {
+            tracing::warn!(
+                actual = self.user.len(),
+                limit = self.config.max_input_bytes,
+                "armor rejected oversized input"
+            );
             return Err(ArmorError::InputTooLarge {
                 actual: self.user.len(),
                 limit: self.config.max_input_bytes,
@@ -93,7 +113,45 @@ impl ArmorBuilder {
         let user_sanitized = after_encoding.into_owned();
         let sanitized_len = user_sanitized.len();
 
-        crate::decider::decide(original_user_len, sanitized_len, &findings, &self.config)?;
+        if let Err(e) =
+            crate::decider::decide(original_user_len, sanitized_len, &findings, &self.config)
+        {
+            let ArmorError::Unsalvageable {
+                findings: ref f,
+                signal_lost_pct,
+            } = e
+            else {
+                return Err(e);
+            };
+            tracing::warn!(
+                findings = f.len(),
+                signal_lost_pct = signal_lost_pct,
+                max_severity = ?f.iter().map(|x| x.severity).max(),
+                "armor rejected input as unsalvageable"
+            );
+            return Err(e);
+        }
+
+        let max_severity = findings.iter().map(|f| f.severity).max();
+        if let Some(sev) = max_severity {
+            // Surface anything ≥ High once at the summary level; lower-severity
+            // findings stay in `armored.findings()` for the caller to act on.
+            if sev >= Severity::High {
+                tracing::warn!(
+                    findings = findings.len(),
+                    max_severity = ?sev,
+                    "armor pipeline emitted high-severity findings"
+                );
+            } else {
+                tracing::debug!(
+                    findings = findings.len(),
+                    max_severity = ?sev,
+                    "armor pipeline completed with findings"
+                );
+            }
+        } else {
+            tracing::debug!("armor pipeline completed clean");
+        }
 
         Ok(Armored {
             system_sanitized,
