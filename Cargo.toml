@@ -30,7 +30,7 @@ proptest = "=1.11.0"
 criterion = "=0.8.2"
 # For the llm-tests OpenRouter example client (gated behind feature, but
 # dev-deps are always downloaded — linking only happens under llm-tests).
-reqwest = { version = "=0.12.24", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls"] }
 serde_json = "=1.0.145"
 
 [features]
